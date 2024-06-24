@@ -1,0 +1,9 @@
+requests~=2.31.0
+beautifulsoup4~=4.12.2
+pillow~=10.3.0
+patool~=2.2.0
+psd_tools
+cloudscraper~=1.2.71
+tenacity~=8.4.1
+emoji~=2.12.1
+ftfy~=6.2.0
