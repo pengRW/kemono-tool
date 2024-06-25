@@ -1,14 +1,16 @@
 import math
+import time
 import traceback
 from urllib.parse import urlparse, parse_qs, unquote
 from bs4 import BeautifulSoup
 from tenacity import retry, stop_after_attempt, wait_fixed
 
-from .const import *
-from .helper import *
+from const import *
+from helper import *
 
-from .http_client import HttpClient
+from http_client import HttpClient
 
+is_first = True
 
 class Kemono:
     http = HttpClient()
@@ -28,6 +30,17 @@ class Kemono:
     def __init__(self):
         # 创建临时目录
         os.makedirs(self.temp_dir, exist_ok=True)
+
+    def request(self, url: str, method: str = 'GET', **kwargs):
+        try:
+            response = self.http.request(url, method, **kwargs)
+            return response
+        except Exception as e:
+            if traceback.format_exc().find('Too Many Requests') != -1:
+                logger.info('kemono服务器累了, 休息100s')
+                time.sleep(100)
+
+            raise e
 
     def download_attachments(self, attr, title: str = ''):
         download_name = unquote(attr.find('a').get('download'), 'utf-8')
@@ -96,7 +109,7 @@ class Kemono:
     def get_post(self, url: str):
         try:
             thread_semaphore.acquire()
-            response = self.http.request(url)
+            response = self.request(url)
             soup = BeautifulSoup(response.text, 'html.parser')
             if not soup:
                 raise Exception("抓取失败！")
@@ -104,38 +117,39 @@ class Kemono:
             logger.info('内容获取成功')
             # 获取标题
             title = soup.find(class_='post__title').find('span').get_text(strip=True)
-            logger.info(f'当前标题{title}')
+            logger.info(f'当前标题 {title}')
             # TODO 设置过滤条件
             # ...
             title = remove_emojis(filter_file_name(title))
             attachments = soup.find_all(class_='post__attachment')
             # 有文件下载文件 没有就下载图片
-            # if attachments:
-            #     logger.info('检测到Downloads 开始下载...')
-            #     for attr in attachments:
-            #         self.download_attachments(attr, title)
-            # else:
-            logger.info('未检测到Downloads 开始下载Files...')
-            images = soup.find_all(class_='post__thumbnail')
-            if not images:
-                logger.info(f'{url} 没有内容跳过')
-                return
+            if attachments:
+                logger.info('检测到Downloads 开始下载...')
+                for attr in attachments:
+                    self.download_attachments(attr, title)
+            else:
+                logger.info('未检测到Downloads 开始下载Files...')
+                images = soup.find_all(class_='post__thumbnail')
+                if not images:
+                    logger.info(f'{url} 没有内容跳过')
+                    return
 
-            self.download_files(images, title)
+                self.download_files(images, title)
             logger.info(f' 下载完成！')
         except Exception as err:
             raise err
         finally:
             thread_semaphore.release()
 
-    def get_author_home(self, url: str, page: int = 1):
+    def get_author_home(self, url: str, page: int = 1, work_name=''):
         """
         从作者主页下载
         :param page: 获取多少页 0 所有
         :param url: 支持 https://kemono.su/fantia/user/* | https://kemono.su/fanbox/user/* 只要网页格式一致都行
+        :param work_name: 从哪个作品开始 仅限第一页
         :return:
         """
-        response = self.http.request(url)
+        response = self.request(url)
         soup = BeautifulSoup(response.text, 'html.parser')
         author = soup.find(class_='user-header__profile').find_all('span')[1].get_text(strip=True)
         logger.info(f'当前作者：{author}')
@@ -157,6 +171,19 @@ class Kemono:
         def posts(s):
             cards = s.find_all(class_='post-card post-card--preview')
             car_name = ''
+            global is_first
+            if work_name and is_first:
+                index = -1
+                for i, item in enumerate(cards):
+                    if work_name in item.find(class_='post-card__header').get_text(strip=True):
+                        index = i
+                        break
+
+                if index != -1:
+                    cards = cards[index:]
+
+                is_first = False
+
             for car in cards:
                 try:
                     car_name = car.find(class_='post-card__header').get_text(strip=True)
@@ -183,7 +210,7 @@ class Kemono:
 
             for _ in range(cursor):
                 current_num = (current_page - 1) * 50
-                resp = self.http.request(f'{domain}?o={current_num}')
+                resp = self.request(f'{domain}?o={current_num}')
                 soup = BeautifulSoup(resp.text, 'html.parser')
                 posts(soup)
                 current_page += 1
@@ -192,4 +219,4 @@ class Kemono:
 
 if __name__ == '__main__':
     kemono = Kemono()
-    kemono.get_post('https://kemono.su/fanbox/user/2408551/post/8079165')
+    kemono.get_author_home('https://kemono.su/fanbox/user/2408551?o=100', 1, '全体公開）簡単に作れる ミニ4駆GIF絵の素材解説')

@@ -9,7 +9,7 @@ import ftfy
 import patoolib
 from PIL import Image
 
-from .logger import logger
+from logger import logger
 
 
 def parse_url(url):

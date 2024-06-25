@@ -6,9 +6,9 @@ import cloudscraper
 import requests
 from tenacity import retry, stop_after_attempt, wait_fixed
 
-from .logger import logger
+from logger import logger
 import traceback
-from .const import thread_semaphore, STOP_MAX_ATTEMPT_NUMBER, WAIT_FIXED
+from const import thread_semaphore, STOP_MAX_ATTEMPT_NUMBER, WAIT_FIXED
 
 
 def failure_function(retry_state):
